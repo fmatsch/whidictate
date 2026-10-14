@@ -1,0 +1,5 @@
+target/
+models/
+.git/
+data/
+**/node_modules

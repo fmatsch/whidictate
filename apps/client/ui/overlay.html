@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>whidictate</title>
+<style>
+  html, body { margin:0; height:100%; overflow:hidden; background:transparent; }
+  body { font:600 14px system-ui,-apple-system,"Segoe UI",sans-serif; color:#fff; user-select:none; -webkit-user-select:none; }
+  .pill { height:100%; display:flex; align-items:center; gap:.6rem; padding:0 1rem; background:rgba(28,34,48,.96); border-radius:22px; }
+  .dot { width:12px; height:12px; border-radius:50%; background:#888; flex:none; }
+  .recording .dot { background:#e03030; animation:pulse 1s infinite; }
+  .recording-secretary .dot { background:#c828a0; animation:pulse 1s infinite; }
+  .processing .dot { background:#e68c1e; } .loading .dot { background:#c8aa28; } .error .dot { background:#b01c1c; }
+  .txt { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
+  .time { font-variant-numeric:tabular-nums; opacity:.8; }
+  @keyframes pulse { 50% { opacity:.35; } }
+</style></head>
+<body><div class="pill" id="p"><span class="dot"></span><span class="txt" id="t">Bereit</span><span class="time" id="time"></span></div>
+<script>
+const { listen } = window.__TAURI__.event;
+let started = 0, timer = null;
+const label = { recording: "Diktieren", "recording-secretary": "Diktat fürs Sekretariat", processing: "Transkribiere …", loading: "Modell lädt …" };
+listen("state", (e) => {
+  const { kind, text } = e.payload;
+  document.getElementById("p").className = "pill " + kind;
+  document.getElementById("t").textContent = label[kind] || text;
+  const rec = kind.startsWith("recording");
+  if (rec && !timer) { started = Date.now(); timer = setInterval(tick, 500); tick(); }
+  if (kind === "processing" && timer) { /* Zeit läuft weiter, Aufnahme geht während der Verarbeitung weiter */ }
+  if (!rec && kind !== "processing" && timer) { clearInterval(timer); timer = null; document.getElementById("time").textContent = ""; }
+});
+function tick() { const s = Math.floor((Date.now() - started) / 1000); document.getElementById("time").textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+</script></body></html>

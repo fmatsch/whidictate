@@ -1,0 +1,11 @@
+target/
+models/
+*.bin
+.DS_Store
+node_modules/
+data/
+*.db
+*.db-wal
+*.db-shm
+apps/client/gen/
+.claude/

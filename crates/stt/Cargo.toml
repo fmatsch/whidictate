@@ -1,0 +1,18 @@
+[package]
+name = "whidictate-stt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+cpal = "0.18.2"
+whidictate-core = { version = "0.1.0", path = "../core" }
+whisper-rs = "0.16.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16.0", features = ["metal"] }
+
+[target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
+whisper-rs = { version = "0.16.0", features = ["vulkan"] }

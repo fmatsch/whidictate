@@ -1,0 +1,10 @@
+# Interner Name im Kanzleinetz: Caddy erzeugt ein eigenes Zertifikat ("tls internal").
+# Deren Stammzertifikat muss auf den Arbeitsplätzen als vertrauenswürdig installiert werden.
+# Mit öffentlichem DNS-Namen entfällt "tls internal" (Let's Encrypt automatisch).
+diktat.kanzlei.local {
+	tls internal
+	request_body {
+		max_size 300MB
+	}
+	reverse_proxy whidictate:8484
+}

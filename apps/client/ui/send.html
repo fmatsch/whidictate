@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Diktat senden</title>
+<link rel="stylesheet" href="common.css">
+<style> body { padding:1rem 1.2rem; } textarea.t { min-height:190px; line-height:1.5; } .actions { display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem; } </style></head>
+<body>
+<h2 style="margin:.2rem 0 .1rem">Diktat an das Sekretariat</h2>
+<p class="muted" id="info"></p>
+<div id="warn" class="card err" style="display:none"></div>
+<label class="f">Titel / Betreff</label><input type="text" id="title" placeholder="z. B. Schreiben an Herrn Müller">
+<div class="row"><div class="grow"><label class="f">Aktenzeichen</label><input type="text" id="matter"></div>
+<div><label class="f">Priorität</label><select id="priority"><option value="0">normal</option><option value="1">eilig</option></select></div></div>
+<label class="f">Anweisung an das Sekretariat</label><textarea id="instruction" rows="3" placeholder="z. B. Als Schriftsatz an das Landgericht, Frist Freitag"></textarea>
+<label class="f">Transkript (korrigierbar – das Sekretariat prüft es anhand der Aufnahme)</label><textarea class="t" id="text"></textarea>
+<div class="actions"><button class="danger" id="discard">Verwerfen</button><button class="primary" id="send">Senden</button></div>
+<p id="msg" class="err"></p>
+<script>
+const { invoke } = window.__TAURI__.core;
+const $ = (s) => document.querySelector(s);
+(async () => {
+  const p = await invoke("get_pending");
+  if (!p) { $("#info").textContent = "Kein Diktat vorhanden."; $("#send").disabled = true; $("#discard").disabled = true; return; }
+  const min = Math.floor(p.duration_s / 60), sec = Math.round(p.duration_s % 60);
+  $("#info").textContent = `Aufnahme ${min}:${String(sec).padStart(2, "0")}${p.language ? " · Sprache " + p.language : ""}`;
+  $("#text").value = p.text;
+  $("#matter").focus();
+  const cfg = await invoke("get_config");
+  if (!cfg.server) { const w = $("#warn"); w.style.display = ""; w.textContent = "Es ist noch kein Server eingerichtet. Das Diktat wird lokal gespeichert und gesendet, sobald Sie sich in den Einstellungen am Server angemeldet haben."; }
+})();
+$("#send").onclick = async () => {
+  try { await invoke("submit_pending", { title: $("#title").value, matter: $("#matter").value, instruction: $("#instruction").value, priority: +$("#priority").value, text: $("#text").value }); }
+  catch (e) { $("#msg").textContent = String(e); }
+};
+$("#discard").onclick = async () => { if (confirm("Diktat wirklich verwerfen? Die Aufnahme geht verloren.")) await invoke("discard_pending"); };
+</script></body></html>

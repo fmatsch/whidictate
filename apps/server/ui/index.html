@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>whidictate</title>
+<style>
+:root {
+  --bg:#f5f6f8; --panel:#fff; --text:#1c2230; --muted:#667085; --line:#dde1e8;
+  --accent:#2b6cd8; --accent-text:#fff; --danger:#c0392b; --ok:#1e8e4e; --warn:#c77700;
+  --hl:#fff6d6; font-size:15px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#14171d; --panel:#1d222b; --text:#e7eaf0; --muted:#98a2b3; --line:#2f3642;
+          --accent:#5b97f5; --accent-text:#0b1220; --hl:#3a3320; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+button, input, select, textarea { font:inherit; color:inherit; }
+button { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.45em .9em; cursor:pointer; }
+button:hover { border-color:var(--accent); }
+button.primary { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+button.danger { color:var(--danger); }
+button:disabled { opacity:.5; cursor:default; }
+input, select, textarea { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.45em .6em; width:100%; }
+header { display:flex; align-items:center; gap:.75rem; padding:.6rem 1rem; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+header h1 { font-size:1.1rem; margin:0 1rem 0 0; }
+header .spacer { flex:1; }
+.tabs button.active { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+main { padding:1rem; max-width:1500px; margin:0 auto; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:.6rem .8rem; border-bottom:1px solid var(--line); vertical-align:top; }
+th { color:var(--muted); font-weight:500; font-size:.85rem; }
+tbody tr { cursor:pointer; }
+tbody tr:hover { background:var(--bg); }
+.badge { display:inline-block; padding:.1em .6em; border-radius:99px; font-size:.8rem; border:1px solid var(--line); }
+.badge.new { color:var(--accent); border-color:var(--accent); }
+.badge.in_progress { color:var(--warn); border-color:var(--warn); }
+.badge.done { color:var(--ok); border-color:var(--ok); }
+.badge.returned { color:var(--muted); }
+.urgent { color:var(--danger); font-weight:600; }
+.muted { color:var(--muted); }
+.login { max-width:340px; margin:12vh auto; padding:1.5rem; }
+.login label { display:block; margin:.7rem 0 .2rem; color:var(--muted); font-size:.85rem; }
+.error { color:var(--danger); margin:.6rem 0 0; min-height:1.2em; }
+.detail { display:grid; grid-template-columns:minmax(300px,2fr) 3fr; gap:1rem; align-items:start; }
+@media (max-width:900px) { .detail { grid-template-columns:1fr; } }
+.pad { padding:1rem; }
+.player { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; margin-bottom:.6rem; }
+audio { width:100%; margin-bottom:.4rem; }
+.segs { max-height:46vh; overflow:auto; border-top:1px solid var(--line); margin-top:.6rem; }
+.seg { padding:.4rem .5rem; cursor:pointer; border-bottom:1px solid var(--line); display:flex; gap:.6rem; }
+.seg:hover { background:var(--bg); }
+.seg.on { background:var(--hl); }
+.seg time { color:var(--muted); font-variant-numeric:tabular-nums; flex:none; }
+.instr { background:var(--hl); border-radius:8px; padding:.6rem .8rem; margin-bottom:.8rem; white-space:pre-wrap; }
+textarea.editor { min-height:44vh; line-height:1.55; font-size:1.02rem; resize:vertical; }
+.row { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.6rem 0; }
+.row > label { color:var(--muted); font-size:.85rem; }
+.grow { flex:1; min-width:140px; }
+.hist { font-size:.88rem; }
+.hist li { margin:.25rem 0; }
+.toast { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:.6rem 1rem; border-radius:8px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:20; }
+.toast.show { opacity:1; }
+kbd { border:1px solid var(--line); border-radius:4px; padding:0 .3em; font-size:.8rem; }
+.hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+const $ = (sel, el = document) => el.querySelector(sel);
+const STATUS = { new: "Neu", in_progress: "In Bearbeitung", done: "Fertig", returned: "Zurück an Autor" };
+const ROLE = { author: "Autor", secretary: "Sekretariat", admin: "Administrator" };
+let me = null, token = null, view = "list", filter = "open", query = "", timer = null, current = null;
+
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (v === true) el.setAttribute(k, "");
+    else if (v !== false && v != null) el.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) el.append(kid.nodeType ? kid : document.createTextNode(kid));
+  return el;
+}
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2600); }
+function fmtTime(ts) { return new Date(ts * 1000).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }); }
+function fmtDur(s) { s = Math.round(s || 0); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+
+async function api(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (opts.json !== undefined) { headers["content-type"] = "application/json"; opts.body = JSON.stringify(opts.json); }
+  const r = await fetch(path, { ...opts, headers, credentials: "same-origin" });
+  if (r.status === 401 && path !== "/api/login" && path !== "/api/me") { me = null; render(); throw new Error("Bitte erneut anmelden"); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(data.error || r.statusText); e.status = r.status; throw e; }
+  return data;
+}
+
+// ---------- Anmeldung ----------
+function renderLogin(root) {
+  const err = h("p", { class: "error" });
+  const user = h("input", { autocomplete: "username", autofocus: true });
+  const pw = h("input", { type: "password", autocomplete: "current-password" });
+  const go = async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api("/api/login", { method: "POST", json: { username: user.value, password: pw.value } });
+      me = r.user; view = "list"; render();
+    } catch (ex) { err.textContent = ex.message; }
+  };
+  root.append(h("form", { class: "card login", onsubmit: go },
+    h("h1", {}, "whidictate"), h("p", { class: "muted" }, "Diktate und Sekretariat"),
+    h("label", {}, "Benutzername"), user, h("label", {}, "Passwort"), pw, err,
+    h("button", { class: "primary", style: "width:100%;margin-top:.8rem" }, "Anmelden")));
+}
+
+// ---------- Rahmen ----------
+function header() {
+  const tab = (id, label) => h("button", { class: filter === id && view === "list" ? "active" : "", onclick: () => { filter = id; view = "list"; render(); } }, label);
+  const search = h("input", { placeholder: "Suchen (Akte, Titel, Text, Autor)", value: query, style: "max-width:280px", onkeydown: (e) => { if (e.key === "Enter") { query = e.target.value; view = "list"; render(); } } });
+  return h("header", {},
+    h("h1", {}, "whidictate"),
+    h("div", { class: "tabs" }, tab("open", "Offen"), " ", tab("done", "Fertig"), " ", tab("returned", "Zurückgegeben"), " ", tab("all", "Alle")),
+    search, h("span", { class: "spacer" }),
+    me.role === "admin" ? h("button", { onclick: () => { view = "admin"; render(); } }, "Benutzer") : null,
+    h("button", { onclick: changePassword }, "Passwort"),
+    h("span", { class: "muted" }, `${me.display_name} (${ROLE[me.role]})`),
+    h("button", { onclick: async () => { await api("/api/logout", { method: "POST" }).catch(() => {}); me = null; render(); } }, "Abmelden"));
+}
+async function changePassword() {
+  const old = prompt("Aktuelles Passwort:"); if (old == null) return;
+  const nw = prompt("Neues Passwort (mindestens 8 Zeichen):"); if (nw == null) return;
+  try { await api("/api/me/password", { method: "POST", json: { old, new: nw } }); toast("Passwort geändert"); } catch (e) { alert(e.message); }
+}
+
+// ---------- Liste ----------
+async function renderList(root) {
+  const statuses = { open: "new,in_progress", done: "done", returned: "returned", all: "" }[filter];
+  const qs = new URLSearchParams(); if (statuses) qs.set("status", statuses); if (query) qs.set("q", query);
+  const rows = await api("/api/dictations?" + qs);
+  const body = h("tbody", {});
+  for (const d of rows) {
+    body.append(h("tr", { onclick: () => { current = d.id; view = "detail"; render(); } },
+      h("td", {}, d.priority ? h("span", { class: "urgent" }, "● eilig") : ""),
+      h("td", {}, h("strong", {}, d.title || "(ohne Titel)"), h("div", { class: "muted" }, d.matter || "")),
+      h("td", {}, d.author), h("td", {}, d.assignee || "–"), h("td", {}, fmtDur(d.duration_s)),
+      h("td", {}, h("span", { class: "badge " + d.status }, STATUS[d.status])), h("td", { class: "muted" }, fmtTime(d.created_at))));
+  }
+  root.append(h("main", {}, h("div", { class: "card" },
+    rows.length ? h("table", {}, h("thead", {}, h("tr", {}, ...["", "Diktat", "Autor", "Bearbeiter", "Dauer", "Status", "Eingang"].map((t) => h("th", {}, t)))), body)
+                : h("p", { class: "pad muted" }, "Keine Diktate in dieser Ansicht."))));
+  clearInterval(timer); timer = setInterval(() => { if (view === "list" && !document.hidden) render(true); }, 20000);
+}
+
+// ---------- Detail ----------
+async function renderDetail(root) {
+  clearInterval(timer);
+  const d = await api("/api/dictations/" + current);
+  const staff = me.role !== "author";
+  const hist = await api(`/api/dictations/${d.id}/history`);
+  const audio = h("audio", { controls: true, preload: "metadata", src: `/api/dictations/${d.id}/audio` });
+  let rate = 1;
+  const segEls = d.segments.map((s) => h("div", { class: "seg", onclick: () => { audio.currentTime = s.start; audio.play(); } }, h("time", {}, fmtDur(s.start)), h("span", {}, s.text)));
+  audio.addEventListener("timeupdate", () => segEls.forEach((el, i) => el.classList.toggle("on", audio.currentTime >= d.segments[i].start && audio.currentTime < d.segments[i].end)));
+  const speed = h("select", { style: "width:auto", onchange: (e) => { rate = +e.target.value; audio.playbackRate = rate; } },
+    ...[0.75, 1, 1.25, 1.5, 2].map((v) => h("option", { value: v, selected: v === 1 }, v + "×")));
+  const skip = (s) => { audio.currentTime = Math.max(0, audio.currentTime + s); };
+  const ta = h("textarea", { class: "editor", readonly: !staff, spellcheck: true, lang: "de" }); ta.value = d.text;
+  let rev = d.rev, dirty = false;
+  ta.addEventListener("input", () => { dirty = true; });
+
+  const save = async () => {
+    try { const r = await api(`/api/dictations/${d.id}/text`, { method: "PUT", json: { text: ta.value, base_rev: rev } }); rev = r.rev; dirty = false; toast("Gespeichert (Version " + rev + ")"); }
+    catch (e) { alert(e.message); if (e.status === 409) { dirty = false; render(); } }
+  };
+  const setStatus = async (status) => {
+    if (dirty) await save();
+    const note = status === "returned" ? prompt("Hinweis an den Autor (optional):", "") : "";
+    if (note === null) return;
+    try { await api(`/api/dictations/${d.id}/status`, { method: "POST", json: { status, note: note || "" } }); toast("Status: " + STATUS[status]); render(); } catch (e) { alert(e.message); }
+  };
+  const matter = h("input", { value: d.matter, readonly: !staff, class: "grow" });
+  const prio = h("select", { disabled: !staff, style: "width:auto" }, h("option", { value: 0, selected: !d.priority }, "normal"), h("option", { value: 1, selected: !!d.priority }, "eilig"));
+  const saveMeta = async () => { try { await api(`/api/dictations/${d.id}/meta`, { method: "PUT", json: { matter: matter.value, priority: +prio.value } }); toast("Angaben gespeichert"); } catch (e) { alert(e.message); } };
+
+  document.onkeydown = (e) => {
+    if (view !== "detail") return;
+    if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); if (staff) save(); }
+    else if (e.key === "F4" || ((e.ctrlKey || e.metaKey) && e.key === " ")) { e.preventDefault(); audio.paused ? audio.play() : audio.pause(); }
+    else if (e.key === "F5") { e.preventDefault(); skip(-5); }
+    else if (e.key === "F6") { e.preventDefault(); skip(5); }
+  };
+  window.onbeforeunload = () => (dirty ? "Ungespeicherte Änderungen" : undefined);
+
+  root.append(h("main", {},
+    h("div", { class: "row" }, h("button", { onclick: () => { if (!dirty || confirm("Ungespeicherte Änderungen verwerfen?")) { view = "list"; render(); } } }, "← Zurück"),
+      h("strong", {}, d.title || "(ohne Titel)"), h("span", { class: "badge " + d.status }, STATUS[d.status]),
+      d.priority ? h("span", { class: "urgent" }, "● eilig") : null,
+      h("span", { class: "muted" }, `von ${d.author} · ${fmtTime(d.created_at)} · ${fmtDur(d.duration_s)}`)),
+    h("div", { class: "detail" },
+      h("div", { class: "card pad" }, audio,
+        h("div", { class: "player" }, h("button", { onclick: () => skip(-5) }, "⏪ 5 s"), h("button", { onclick: () => (audio.paused ? audio.play() : audio.pause()) }, "⏯"), h("button", { onclick: () => skip(5) }, "5 s ⏩"), speed),
+        h("p", { class: "muted", style: "font-size:.8rem" }, h("kbd", {}, "F4"), " Start/Pause · ", h("kbd", {}, "F5"), " −5 s · ", h("kbd", {}, "F6"), " +5 s · ", h("kbd", {}, "Strg+S"), " Speichern"),
+        h("div", { class: "segs" }, ...segEls),
+        h("details", { style: "margin-top:.8rem" }, h("summary", {}, "Rohtranskript (Whisper)"), h("p", { style: "white-space:pre-wrap" }, d.raw_text))),
+      h("div", { class: "card pad" },
+        d.instruction ? h("div", { class: "instr" }, h("strong", {}, "Anweisung: "), d.instruction) : null,
+        h("div", { class: "row" }, h("label", {}, "Aktenzeichen"), matter, h("label", {}, "Priorität"), prio, staff ? h("button", { onclick: saveMeta }, "Übernehmen") : null),
+        ta,
+        h("div", { class: "row" },
+          staff ? [h("button", { class: "primary", onclick: save }, "Speichern"),
+                   h("button", { onclick: () => setStatus("in_progress") }, "In Bearbeitung"),
+                   h("button", { onclick: () => setStatus("done") }, "Fertig"),
+                   h("button", { onclick: () => setStatus("returned") }, "Zurück an Autor")] : null,
+          h("button", { onclick: async () => { await navigator.clipboard.writeText(ta.value); toast("In Zwischenablage kopiert"); } }, "Text kopieren")),
+        h("details", {}, h("summary", {}, "Verlauf"),
+          h("ul", { class: "hist" }, ...hist.events.map((e) => h("li", {}, `${fmtTime(e.at)} · ${e.user}: ${e.detail}`)))))
+    )));
+}
+
+// ---------- Administration ----------
+async function renderAdmin(root) {
+  clearInterval(timer);
+  const users = await api("/api/users");
+  const f = { username: h("input", { placeholder: "Benutzername" }), display_name: h("input", { placeholder: "Anzeigename" }), password: h("input", { type: "password", placeholder: "Passwort (min. 8 Zeichen)" }),
+              role: h("select", {}, ...Object.entries(ROLE).map(([k, v]) => h("option", { value: k }, v))) };
+  const add = async () => {
+    try { await api("/api/users", { method: "POST", json: Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value])) }); toast("Benutzer angelegt"); render(); } catch (e) { alert(e.message); }
+  };
+  const patch = async (id, body) => { try { await api("/api/users/" + id, { method: "PATCH", json: body }); render(); } catch (e) { alert(e.message); } };
+  root.append(h("main", {}, h("div", { class: "card" }, h("table", {},
+    h("thead", {}, h("tr", {}, ...["Name", "Benutzername", "Rolle", "Aktiv", ""].map((t) => h("th", {}, t)))),
+    h("tbody", {}, ...users.map((u) => h("tr", { style: "cursor:default" }, h("td", {}, u.display_name), h("td", {}, u.username), h("td", {}, ROLE[u.role]), h("td", {}, u.active ? "ja" : "gesperrt"),
+      h("td", {}, h("button", { onclick: () => { const pw = prompt("Neues Passwort für " + u.username + ":"); if (pw) patch(u.id, { password: pw }); } }, "Passwort setzen"), " ",
+        h("button", { class: u.active ? "danger" : "", onclick: () => patch(u.id, { active: !u.active }) }, u.active ? "Sperren" : "Entsperren"))))))),
+    h("div", { class: "card pad", style: "margin-top:1rem" }, h("h3", { style: "margin-top:0" }, "Neuer Benutzer"),
+      h("div", { class: "row" }, f.username, f.display_name, f.password, f.role, h("button", { class: "primary", onclick: add }, "Anlegen")))));
+}
+
+async function render(keepScroll) {
+  const y = window.scrollY;
+  const root = $("#app"); root.replaceChildren();
+  if (!me) { try { me = await api("/api/me"); } catch { renderLogin(root); return; } }
+  root.append(header());
+  try {
+    if (view === "list") await renderList(root);
+    else if (view === "detail") await renderDetail(root);
+    else if (view === "admin") await renderAdmin(root);
+  } catch (e) { if (me) root.append(h("main", {}, h("p", { class: "error" }, e.message))); }
+  if (keepScroll) window.scrollTo(0, y);
+}
+render();
+</script>
+</body>
+</html>

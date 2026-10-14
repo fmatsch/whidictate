@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>whidictate – Einstellungen</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  body { display:grid; grid-template-columns:170px 1fr; height:100vh; }
+  nav { border-right:1px solid var(--line); background:var(--panel); padding:.8rem .5rem; }
+  nav h1 { font-size:1.05rem; margin:.2rem .6rem .8rem; }
+  nav button { display:block; width:100%; text-align:left; border:0; background:none; padding:.55em .7em; border-radius:6px; }
+  nav button.on { background:var(--accent); color:var(--accent-text); }
+  main { overflow:auto; padding:1.2rem 1.5rem; }
+  section { display:none; max-width:640px; } section.on { display:block; }
+  h2 { margin-top:0; }
+  table { width:100%; border-collapse:collapse; }
+  td, th { text-align:left; padding:.5rem .4rem; border-bottom:1px solid var(--line); }
+  progress { width:140px; }
+  .save { position:sticky; bottom:0; background:var(--bg); padding:.8rem 0; }
+</style></head>
+<body>
+<nav>
+  <h1>whidictate</h1>
+  <button data-t="general" class="on">Allgemein</button>
+  <button data-t="audio">Mikrofon & Tasten</button>
+  <button data-t="model">Spracherkennung</button>
+  <button data-t="vocab">Wörterbuch</button>
+  <button data-t="server">Sekretariat</button>
+  <button data-t="mine">Meine Diktate</button>
+</nav>
+<main>
+<section id="general" class="on">
+  <h2>Allgemein</h2>
+  <label class="f">Sprache beim Diktieren</label>
+  <select id="language"><option value="de">Deutsch</option><option value="en">English</option><option value="auto">Automatisch erkennen</option></select>
+  <p class="hint">„Automatisch“ erkennt bei kurzen Sätzen gelegentlich die falsche Sprache. Für Kanzleialltag besser fest einstellen.</p>
+  <label class="f"><input type="checkbox" id="commands"> Diktierbefehle verwenden („Punkt“, „Komma“, „neue Zeile“, „neuer Absatz“, „Klammer auf/zu“ …)</label>
+  <label class="f">Text einfügen per</label>
+  <select id="insert_method"><option value="paste">Zwischenablage (schnell, empfohlen)</option><option value="type">Tippen (für Felder, die Einfügen sperren)</option></select>
+  <label class="f">Tastenkürzel: Diktieren starten/stoppen</label>
+  <input type="text" id="hotkey">
+  <label class="f">Tastenkürzel: Diktat an Sekretariat aufnehmen</label>
+  <input type="text" id="secretary_hotkey">
+  <p class="hint">Format z. B. <code>CommandOrControl+Shift+Space</code>. <b>Linux/Wayland:</b> globale Tastenkürzel sind dort nicht möglich. Legen Sie in den Systemeinstellungen ein Kürzel auf den Befehl <code>whidictate --toggle</code> (bzw. <code>whidictate --send</code>) oder nutzen Sie die Mikrofontasten.</p>
+  <label class="f"><input type="checkbox" id="use_gpu"> Grafikkarte verwenden (Vulkan/Metal) – bei Notebooks ohne GPU abschalten</label>
+  <label class="f"><input type="checkbox" id="overlay"> Kleine Statusanzeige beim Diktieren (nach Neustart)</label>
+</section>
+
+<section id="audio">
+  <h2>Mikrofon & Tasten</h2>
+  <label class="f">Mikrofon</label>
+  <div class="row"><select id="microphone" class="grow"></select><button id="refresh-dev">Aktualisieren</button></div>
+  <h3>Tasten am Diktiermikrofon</h3>
+  <p class="hint">Philips SpeechMike und ähnliche Geräte: Klicken Sie auf „Zuordnen“ und drücken Sie danach die gewünschte Taste am Mikrofon. Funktioniert auch unter Wayland. Unter macOS ggf. in den Systemeinstellungen „Eingabeüberwachung“ erlauben.</p>
+  <table id="hid-table"></table>
+  <p id="hid-msg" class="hint"></p>
+</section>
+
+<section id="model">
+  <h2>Spracherkennung (Whisper)</h2>
+  <p class="hint">Alle Modelle laufen lokal auf diesem Rechner. Es werden keine Sprachdaten ins Internet gesendet; nur der Download der Modelle benötigt eine Verbindung.</p>
+  <table id="models"></table>
+  <p id="model-msg" class="hint"></p>
+</section>
+
+<section id="vocab">
+  <h2>Wörterbuch</h2>
+  <p class="hint">Namen, Gerichte, Fachbegriffe – ein Begriff pro Zeile. Whisper bevorzugt diese Schreibweisen.</p>
+  <textarea id="vocabulary" rows="14" placeholder="Landgericht München I&#10;Oberlandesgericht&#10;Schmidt-Müller&#10;Vollstreckungsbescheid"></textarea>
+</section>
+
+<section id="server">
+  <h2>Sekretariat</h2>
+  <p class="hint">Ohne Server funktioniert whidictate vollständig lokal. Mit Server können Diktate zur Bearbeitung an das Sekretariat gesendet werden.</p>
+  <div id="server-state" class="card"></div>
+  <label class="f">Server-Adresse</label><input type="text" id="srv-url" placeholder="https://diktat.kanzlei.local">
+  <label class="f">Benutzername</label><input type="text" id="srv-user" autocomplete="off">
+  <label class="f">Passwort</label><input type="password" id="srv-pass" autocomplete="off">
+  <p class="hint">Das Passwort wird nicht gespeichert, nur ein Geräte-Zugang.</p>
+  <div class="row"><button id="srv-test">Verbindung testen</button><button id="srv-login" class="primary">Anmelden</button><button id="srv-logout" class="danger">Abmelden</button></div>
+  <p id="srv-msg"></p>
+  <div id="queue" class="hint"></div>
+</section>
+
+<section id="mine">
+  <h2>Meine Diktate</h2>
+  <div class="row"><button id="mine-refresh">Aktualisieren</button><span id="mine-msg" class="muted"></span></div>
+  <table id="mine-table"></table>
+</section>
+
+<div class="save" id="savebar"><button class="primary" id="save">Speichern</button> <span id="save-msg" class="muted"></span></div>
+</main>
+
+<script>
+const { invoke } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
+const $ = (s) => document.querySelector(s);
+const STATUS = { new: "Neu", in_progress: "In Bearbeitung", done: "Fertig", returned: "Zurück an Autor" };
+const ACTIONS = { toggle: "Diktieren starten/stoppen", secretary: "Diktat an Sekretariat" };
+let cfg = null, learning = null;
+
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) { if (k.startsWith("on")) el.addEventListener(k.slice(2), v); else if (k === "class") el.className = v; else if (v === true) el.setAttribute(k, ""); else if (v !== false && v != null) el.setAttribute(k, v); }
+  for (const kid of kids.flat()) if (kid != null) el.append(kid.nodeType ? kid : document.createTextNode(kid));
+  return el;
+}
+const msg = (el, text, cls = "") => { el.textContent = text; el.className = cls; };
+
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
+  document.querySelectorAll("section").forEach((s) => s.classList.toggle("on", s.id === b.dataset.t));
+  $("#savebar").style.display = ["general", "audio", "vocab"].includes(b.dataset.t) ? "" : "none";
+  if (b.dataset.t === "mine") loadMine();
+});
+
+async function loadConfig() {
+  cfg = await invoke("get_config");
+  for (const id of ["language", "insert_method", "hotkey", "secretary_hotkey"]) $("#" + id).value = cfg[id];
+  for (const id of ["commands", "use_gpu", "overlay"]) $("#" + id).checked = cfg[id];
+  $("#vocabulary").value = (cfg.vocabulary || []).join("\n");
+  await loadDevices();
+  renderHid(); renderServer();
+}
+async function loadDevices() {
+  const devs = await invoke("list_devices");
+  const sel = $("#microphone"); sel.replaceChildren(h("option", { value: "" }, "Systemstandard"));
+  for (const d of devs) sel.append(h("option", { value: d }, d));
+  sel.value = cfg.microphone || "";
+}
+$("#refresh-dev").onclick = loadDevices;
+
+$("#save").onclick = async () => {
+  const next = { ...cfg,
+    language: $("#language").value, insert_method: $("#insert_method").value, hotkey: $("#hotkey").value.trim(), secretary_hotkey: $("#secretary_hotkey").value.trim(),
+    commands: $("#commands").checked, use_gpu: $("#use_gpu").checked, overlay: $("#overlay").checked,
+    microphone: $("#microphone").value || null,
+    vocabulary: $("#vocabulary").value.split("\n").map((s) => s.trim()).filter(Boolean) };
+  try { cfg = await invoke("save_config", { cfg: next }); msg($("#save-msg"), "Gespeichert.", "ok"); } catch (e) { msg($("#save-msg"), String(e), "err"); }
+};
+
+// ----- Mikrofontasten -----
+function renderHid() {
+  const t = $("#hid-table"); t.replaceChildren();
+  for (const [action, label] of Object.entries(ACTIONS)) {
+    const b = (cfg.hid_buttons || []).find((x) => x.action === action);
+    t.append(h("tr", {}, h("td", {}, label),
+      h("td", { class: "muted" }, learning === action ? "Jetzt Taste am Mikrofon drücken …" : b ? `zugeordnet (Gerät ${b.device})` : "nicht zugeordnet"),
+      h("td", {}, learning === action
+        ? h("button", { onclick: async () => { await invoke("cancel_learn"); learning = null; renderHid(); } }, "Abbrechen")
+        : [h("button", { onclick: async () => { learning = action; await invoke("learn_hid", { action }); renderHid(); } }, "Zuordnen"), " ",
+           b ? h("button", { class: "danger", onclick: async () => { await invoke("clear_hid", { action }); } }, "Entfernen") : null])));
+  }
+}
+listen("hid-learned", () => { learning = null; msg($("#hid-msg"), "Taste zugeordnet.", "ok"); });
+listen("config-changed", async () => { cfg = await invoke("get_config"); renderHid(); renderServer(); loadModels(); });
+
+// ----- Modelle -----
+async function loadModels() {
+  const list = await invoke("list_models"); const t = $("#models"); t.replaceChildren();
+  for (const m of list) {
+    t.append(h("tr", {}, h("td", {}, h("strong", {}, m.title), h("div", { class: "muted" }, `${m.note} · ${m.size_mb} MB`)),
+      h("td", { id: "m-" + m.file }, m.installed ? h("span", { class: "badge ok" }, "installiert")
+        : h("button", { onclick: async (e) => { e.target.disabled = true; try { await invoke("download_model", { file: m.file }); } catch (x) { msg($("#model-msg"), String(x), "err"); e.target.disabled = false; } } }, "Herunterladen"))));
+  }
+}
+listen("model-progress", (e) => {
+  const { file, done, total } = e.payload; const cell = document.getElementById("m-" + file); if (!cell) return;
+  cell.replaceChildren(h("progress", { max: total || 1, value: done }), h("div", { class: "muted" }, `${Math.round(done / 1048576)} / ${Math.round(total / 1048576)} MB`));
+});
+listen("model-done", (e) => { msg($("#model-msg"), e.payload.error ? "Download fehlgeschlagen: " + e.payload.error : "Modell installiert und geladen.", e.payload.error ? "err" : "ok"); loadModels(); });
+
+// ----- Server -----
+function renderServer() {
+  const s = cfg.server;
+  $("#server-state").replaceChildren(s ? h("span", { class: "ok" }, `Angemeldet als ${s.username} auf ${s.url}`) : h("span", { class: "muted" }, "Kein Server eingerichtet – whidictate arbeitet rein lokal."));
+  if (s) { $("#srv-url").value = s.url; $("#srv-user").value = s.username; }
+  $("#srv-logout").style.display = s ? "" : "none";
+  refreshQueue();
+}
+$("#srv-test").onclick = async () => { try { msg($("#srv-msg"), "Server erreichbar (Version " + await invoke("server_test", { url: $("#srv-url").value }) + ")", "ok"); } catch (e) { msg($("#srv-msg"), String(e), "err"); } };
+$("#srv-login").onclick = async () => {
+  msg($("#srv-msg"), "Anmelden …");
+  try { msg($("#srv-msg"), await invoke("server_login", { url: $("#srv-url").value, username: $("#srv-user").value, password: $("#srv-pass").value }), "ok"); $("#srv-pass").value = ""; }
+  catch (e) { msg($("#srv-msg"), String(e), "err"); }
+};
+$("#srv-logout").onclick = async () => { await invoke("server_logout"); msg($("#srv-msg"), "Abgemeldet."); };
+async function refreshQueue() {
+  const q = await invoke("queue_status");
+  $("#queue").textContent = q.pending ? `${q.pending} Diktat(e) warten auf Versand${q.last_error ? " – " + q.last_error : ""}` : q.failed ? `${q.failed} Diktat(e) wurden vom Server abgelehnt (Ordner „failed“).` : "";
+}
+listen("queue-changed", refreshQueue);
+
+// ----- Meine Diktate -----
+async function loadMine() {
+  const t = $("#mine-table"); t.replaceChildren(); msg($("#mine-msg"), "Lade …");
+  try {
+    const rows = await invoke("my_dictations");
+    msg($("#mine-msg"), rows.length ? "" : "Noch keine Diktate gesendet.");
+    t.append(h("tr", {}, ...["Diktat", "Status", "Eingang", ""].map((x) => h("th", {}, x))));
+    for (const d of rows) t.append(h("tr", {}, h("td", {}, h("strong", {}, d.title || "(ohne Titel)"), h("div", { class: "muted" }, d.matter)),
+      h("td", {}, h("span", { class: "badge" }, STATUS[d.status] || d.status)), h("td", { class: "muted" }, new Date(d.created_at * 1000).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })),
+      h("td", {}, d.status === "done" ? h("button", { onclick: async () => { await navigator.clipboard.writeText(await invoke("dictation_text", { id: d.id })); msg($("#mine-msg"), "Text kopiert.", "ok"); } }, "Text kopieren") : null)));
+  } catch (e) { msg($("#mine-msg"), String(e), "err"); }
+}
+$("#mine-refresh").onclick = loadMine;
+
+loadConfig(); loadModels();
+</script></body></html>

@@ -1,0 +1,25 @@
+# Server mit HTTPS (Caddy). Vor dem Start anpassen:
+#   - deploy/Caddyfile: Servername
+#   - WHIDICTATE_ADMIN_PASSWORD: Startpasswort des Benutzers "admin" (nach dem ersten Login ändern, danach Zeile entfernen)
+services:
+  whidictate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    environment:
+      WHIDICTATE_ADMIN_PASSWORD: "bitte-aendern-12345"
+    volumes:
+      - whidictate-data:/data
+    expose: ["8484"]
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["443:443", "80:80"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [whidictate]
+volumes:
+  whidictate-data:
+  caddy-data:
