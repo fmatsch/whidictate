@@ -41,6 +41,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libasound2-dev libudev-dev \
             libxdo-dev libssl-dev cmake libvulkan-dev glslc libxcb1-dev libwayland-dev
+      - name: Kurzer Build-Pfad (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        # Der Vulkan-Shader-Build von whisper.cpp erzeugt sehr tiefe Pfade (MSBuild-Fehler FTK1011 ab 260 Zeichen).
+        run: '"CARGO_TARGET_DIR=C:\t" | Out-File -FilePath $env:GITHUB_ENV -Append'
       - name: Vulkan SDK (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

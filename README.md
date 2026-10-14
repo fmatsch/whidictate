@@ -28,6 +28,9 @@ Der Client funktioniert vollständig **ohne** Server.
 
 Voraussetzungen: [Rust](https://rustup.rs), CMake; Linux zusätzlich siehe `.github/workflows/ci.yml`.
 
+**Windows:** Visual Studio Build Tools, CMake und das Vulkan SDK installieren und in einem kurzen Pfad bauen,
+z. B. `set CARGO_TARGET_DIR=C:\t` – der Vulkan-Shader-Build von whisper.cpp erzeugt sonst Pfade über 260 Zeichen und scheitert.
+
 ```bash
 # 1. Modell herunterladen (oder später in den Einstellungen der App)
 mkdir -p models && curl -L -o models/ggml-large-v3-turbo-q5_0.bin \
